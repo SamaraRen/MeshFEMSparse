@@ -192,6 +192,10 @@ namespace spmat_helper {
 
     // Transpose of scalar
     template<typename T> std::enable_if_t<std::is_arithmetic<T>::value, T> transpose_block(T a) { return a; }
+
+    // Transpose of an autodiff scalar (needed to instantiate sparse matvec for
+    // autodiff-typed CSCMatrix, e.g. in sensitivity analysis).
+    template<typename DerType> Eigen::AutoDiffScalar<DerType> transpose_block(const Eigen::AutoDiffScalar<DerType> &a) { return a; }
 }
 
 template<typename _Triplet = Triplet<Real>>
@@ -875,6 +879,13 @@ struct CSCMatrix {
     // zero).
     CSCMatrix(_Index mm, _Index nn, const IdxVector &Ap_in, const IdxVector &Ai_in)
         : Ap(Ap_in), Ai(Eigen::Map<const VecX_T<RowIndex>>(Ai_in.data(), Ai_in.size())), Ax(Ai.size()), m(mm), n(nn), nz(Ai_in.size()) { }
+
+    // Construct from an existing sparsity pattern where the row-index array `Ai`
+    // is already stored in the Eigen-backed member type (as produced by another
+    // `CSCMatrix`). Needed by `ParallelAssembly`, which copies `m_H.Ai` directly.
+    template<class IdxVector_ = IdxVector, class = std::enable_if_t<!std::is_same_v<IdxVector_, VecX_T<RowIndex>>>>
+    CSCMatrix(_Index mm, _Index nn, const IdxVector &Ap_in, const VecX_T<RowIndex> &Ai_in)
+        : Ap(Ap_in), Ai(Ai_in), Ax(Ai_in.size()), m(mm), n(nn), nz(Ai_in.size()) { }
 
     CSCMatrix(const CSCMatrix  &b, bool sparsityOnly=false) : Ap(b.Ap), Ai(b.Ai), m(b.m), n(b.n), nz(b.nz), symmetry_mode(b.symmetry_mode) { if (!sparsityOnly) Ax = b.Ax; }
     CSCMatrix(      CSCMatrix &&b) noexcept : Ap(std::move(b.Ap)), Ai(std::move(b.Ai)), Ax(std::move(b.Ax)), m(b.m), n(b.n), nz(b.nz), symmetry_mode(b.symmetry_mode) { }
